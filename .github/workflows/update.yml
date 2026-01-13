@@ -1,10 +1,12 @@
-name: Update M3U8 Every 5 Minutes
+name: Update M3U8 URL
 
 on:
   schedule:
     - cron: '*/5 * * * *'  # Every 5 minutes
   workflow_dispatch:
-  push:
+
+permissions:
+  contents: write
 
 jobs:
   update:
@@ -12,31 +14,33 @@ jobs:
     
     steps:
     - uses: actions/checkout@v3
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
     
-    - name: Create M3U8 file
+    - name: Fetch and Update M3U8
       run: |
-        # Create index.m3u8 with your direct stream URL
-        cat > index.m3u8 << 'EOF'
-        #EXTM3U
-        # Generated: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
-        # Channel: sgsafsfsfsfsfs
-        # Title: My first stream.
-        # Update Interval: 5 minutes
-        # Next Update: $(date -u -d '+5 minutes' +"%Y-%m-%dT%H:%M:%SZ")
+        # Fetch the JSON from Kick API
+        curl -s "https://kick.com/api/v2/channels/sgsafsfsfsfsfs" > api_response.json
         
-        #EXTINF:-1,My first stream.
-        https://fa723fc1b171.us-west-2.playback.live-video.net/api/video/v1/us-west-2.196233775518.channel.muWiEPi88enM.m3u8?token=eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzM4NCJ9.eyJhd3M6Y2hhbm5lbC1hcm4iOiJhcm46YXdzOml2czp1cy13ZXN0LTI6MTk2MjMzNzc1NTE4OmNoYW5uZWwvbXVXaUVQaTg4ZW5NIiwiYXdzOmFjY2Vzcy1jb250cm9sLWFsbG93LW9yaWdpbiI6Imh0dHBzOi8va2ljay5jb20saHR0cHM6Ly93d3cuZ3N0YXRpYy5jb20saHR0cHM6Ly8qLmtpY2subGl2ZSxodHRwczovL3BsYXllci5raWNrLmNvbSxodHRwczovL2FkbWluLmtpY2suY29tLGh0dHBzOi8vYmV0YS5raWNrLmNvbSxodHRwczovL25leHQua2ljay5jb20saHR0cHM6Ly9kYXNoYm9hcmQua2ljay5jb20saHR0cHM6Ly8qLnByZXZpZXcua2ljay5jb20saHR0cHM6Ly94Ym94LmtpY2suY29tLGh0dHBzOi8vcGxheXN0YXRpb24ua2ljay5jb20iLCJhd3M6c3RyaWN0LW9yaWdpbi1lbmZvcmNlbWVudCI6ZmFsc2UsImV4cCI6MTc2ODMwMTY0NH0.j1ahNR1RIhUlWjNU1wVLJiz5O2UDb7amhLkOTSkJ5xTSGlW98bflz69vgFoScomLmnN5YrKJsMXIYiddpF4pb9HxelbBN6LjfRZtA5ErUuGrtw6kGRbHyGwE-iums0wk
-        EOF
+        # Extract the m3u8 URL using jq
+        M3U8_URL=$(jq -r '.playback_url' api_response.json)
         
-        echo "✅ Created index.m3u8"
-        echo "File size: $(wc -l index.m3u8) lines"
+        # Create the m3u8 file with EXACT format
+        echo "#EXTINF:-1,My first stream." > index.m3u8
+        echo "$M3U8_URL" >> index.m3u8
+        
+        echo "✅ Updated index.m3u8"
+        echo "URL length: ${#M3U8_URL} characters"
     
-    - name: Commit and push
+    - name: Commit if changed
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
-        git add index.m3u8
-        git commit -m "Update m3u8: $(date '+%Y-%m-%d %H:%M:%S UTC')" || echo "No changes to commit"
-        git push
+        
+        # Check if file changed
+        if git diff --quiet index.m3u8; then
+          echo "⚠️ No changes to commit"
+        else
+          git add index.m3u8
+          git commit -m "Update m3u8 URL: $(date '+%H:%M')"
+          git push
+          echo "✅ Changes committed"
+        fi
